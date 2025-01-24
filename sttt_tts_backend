@@ -1,0 +1,65 @@
+from flask import Flask, render_template, request, jsonify, send_from_directory
+import os
+from gtts import gTTS
+import speech_recognition as sr
+
+app = Flask(_name_)
+
+# Directory to save files
+SAVE_DIR = "saved_conversions"
+os.makedirs(SAVE_DIR, exist_ok=True)
+
+# Route to serve the main page
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# Route to convert speech to text
+@app.route('/speech_to_text', methods=['POST'])
+def speech_to_text():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening for speech...")
+        try:
+            audio = recognizer.listen(source)
+            text = recognizer.recognize_google(audio)
+            save = request.form.get('save', 'false').lower() == 'true'
+            
+            if save:
+                file_path = os.path.join(SAVE_DIR, "speech_to_text.txt")
+                with open(file_path, "a") as file:
+                    file.write(text + "\n")
+            
+            return jsonify({'text': text, 'saved': save})
+        except sr.UnknownValueError:
+            return jsonify({'text': 'Could not understand the speech.', 'saved': False})
+        except sr.RequestError:
+            return jsonify({'text': 'Speech recognition service is unavailable.', 'saved': False})
+
+# Route to convert text to speech and save as MP3
+@app.route('/text_to_speech', methods=['POST'])
+def text_to_speech():
+    text = request.form['text']
+    save = request.form.get('save', 'false').lower() == 'true'
+    
+    if save:
+        mp3_filename = f"text_to_speech_{len(os.listdir(SAVE_DIR)) + 1}.mp3"
+        file_path = os.path.join(SAVE_DIR, mp3_filename)
+        
+        # Convert text to speech and save as MP3
+        tts = gTTS(text)
+        tts.save(file_path)
+        
+        return jsonify({'message': 'Speech completed and saved', 'file_url': f'/download/{mp3_filename}'})
+    else:
+        tts = gTTS(text)
+        tts.save("/tmp/temp.mp3")
+        return jsonify({'message': 'Speech completed but not saved', 'file_url': None})
+
+# Route to download saved files
+@app.route('/download/<filename>', methods=['GET'])
+def download_file(filename):
+    return send_from_directory(SAVE_DIR, filename)
+
+if _name_ == '_main_':
+    app.run(debug=True)
